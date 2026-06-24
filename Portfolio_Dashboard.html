@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETF for Profits Portfolio Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; }
+        .tab-btn { transition: all 0.2s ease-in-out; }
+        .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: 600; }
+        .tab-inactive { color: #64748b; border-bottom: 2px solid transparent; }
+        .tab-inactive:hover { color: #0f172a; border-bottom: 2px solid #cbd5e1; }
+        .card { background: white; border-radius: 0.75rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0; }
+        .table-container::-webkit-scrollbar { width: 6px; height: 6px; }
+        .table-container::-webkit-scrollbar-track { background: #f1f5f9; }
+        .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .table-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .bg-gradient-header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
+        
+        /* Treemap & Heatmap Styles */
+        .treemap-node { display: flex; align-items: center; justify-content: center; text-align: center; color: white; font-weight: bold; font-size: 0.75rem; padding: 4px; border: 1px solid white; border-radius: 4px; transition: transform 0.2s; }
+        .treemap-node:hover { transform: scale(1.02); z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .heatmap-cell { transition: background-color 0.3s, transform 0.2s; cursor: default; }
+        .heatmap-cell:hover { transform: scale(1.05); border-radius: 4px; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        
+        /* Venn Diagram Styles */
+        .venn-container { position: relative; width: 100%; height: 200px; display: flex; justify-content: center; align-items: center; }
+        .venn-circle { position: absolute; width: 140px; height: 140px; border-radius: 50%; mix-blend-mode: multiply; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: white; font-weight: bold; font-size: 0.8rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .venn-left { left: 50%; transform: translateX(-80%); background-color: rgba(59, 130, 246, 0.8); }
+        .venn-right { right: 50%; transform: translateX(80%); background-color: rgba(16, 185, 129, 0.8); }
+        .venn-intersection { position: absolute; z-index: 10; font-weight: 800; color: #1e293b; text-shadow: 0 0 4px white; }
+
+        /* Section divider */
+        .section-title { position: relative; display: inline-block; padding-bottom: 0.5rem; margin-bottom: 1.5rem; }
+        .section-title::after { content: ''; position: absolute; left: 0; bottom: 0; width: 50px; height: 3px; background-color: #3b82f6; border-radius: 2px; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-gradient-header text-white py-6 shadow-md print:hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center">
+            <div class="mb-4 sm:mb-0">
+                <h1 class="text-2xl font-bold tracking-tight">Institutional Portfolio Analysis</h1>
+                <p class="text-slate-300 text-sm mt-1">Comprehensive 6-ETF Strategy | Market Value: <span class="font-semibold text-emerald-400">$895,797.00</span></p>
+            </div>
+            <div class="flex space-x-4">
+                <button class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition" onclick="window.print()">
+                    <i class="fas fa-print mr-2"></i> Export Report
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <div class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm print:hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <nav class="flex space-x-6 overflow-x-auto" aria-label="Tabs">
+                <button id="btn-overview" onclick="switchTab('overview')" class="tab-btn tab-active py-4 px-1 text-sm font-medium whitespace-nowrap">
+                    <i class="fas fa-chart-pie mr-2"></i> Comprehensive Overview
+                </button>
+                <button id="btn-drilldown" onclick="switchTab('drilldown')" class="tab-btn tab-inactive py-4 px-1 text-sm font-medium whitespace-nowrap">
+                    <i class="fas fa-search-dollar mr-2"></i> ETF Drilldown
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        
+        <!-- ================= OVERVIEW TAB (Massively Expanded) ================= -->
+        <div id="tab-overview" class="block space-y-12">
+            
+            <!-- SECTION 1: Executive Summary & Scorecard -->
+            <section>
+                <h2 class="text-2xl font-bold text-slate-800 section-title">1. Executive Summary & Scorecard</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="card p-5 border-t-4 border-t-blue-500 flex flex-col justify-center items-center">
+                        <div class="relative w-32 h-32">
+                            <canvas id="diversificationGauge"></canvas>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center mt-4">
+                                <span class="text-2xl font-bold text-slate-800">82</span>
+                                <span class="text-[10px] text-slate-500 uppercase">Div Score</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card p-5 border-t-4 border-t-emerald-500">
+                        <p class="text-sm font-medium text-slate-500 uppercase tracking-wider">HHI (Concentration Index)</p>
+                        <p class="text-3xl font-bold text-slate-900 mt-2">185.4</p>
+                        <p class="text-xs text-emerald-600 mt-1"><i class="fas fa-check-circle mr-1"></i> Highly Diversified (<1500)</p>
+                    </div>
+                    <div class="card p-5 border-t-4 border-t-purple-500">
+                        <p class="text-sm font-medium text-slate-500 uppercase tracking-wider">Top 10 Weight</p>
+                        <p class="text-3xl font-bold text-slate-900 mt-2">18.6%</p>
+                        <p class="text-xs text-purple-600 mt-1"><i class="fas fa-balance-scale mr-1"></i> Balanced Exposure</p>
+                    </div>
+                    <div class="card p-5 border-t-4 border-t-amber-500">
+                        <p class="text-sm font-medium text-slate-500 uppercase tracking-wider">Eq / FI Split</p>
+                        <p class="text-3xl font-bold text-slate-900 mt-2">94 / 6</p>
+                        <p class="text-xs text-amber-600 mt-1"><i class="fas fa-chart-line mr-1"></i> Aggressive Growth Profile</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card p-6 bg-slate-50">
+                        <h3 class="text-lg font-bold text-slate-800 mb-3 flex items-center"><i class="fas fa-clipboard-list text-blue-500 mr-2"></i> Key Findings & Benchmark Deltas</h3>
+                        <ul class="space-y-3 text-sm text-slate-700">
+                            <li class="flex items-start"><i class="fas fa-caret-right text-blue-500 mt-1 mr-2"></i> <strong>Multi-Factor Alpha:</strong> The portfolio successfully blends Quality (SPHQ), High Dividend (VHYD/VYMI), and broad Market-Cap weighting (MGC), creating a smoother volatility profile than a pure SPY holding.</li>
+                            <li class="flex items-start"><i class="fas fa-caret-right text-blue-500 mt-1 mr-2"></i> <strong>Geographic Tilt:</strong> Holds ~30% International exposure (vs. 0% in SPY/QQQ), providing a strong hedge against US market mean reversion. Ex-China EM (EMXC) avoids specific geopolitical drag.</li>
+                            <li class="flex items-start"><i class="fas fa-caret-right text-blue-500 mt-1 mr-2"></i> <strong>Value/Yield Bias:</strong> Due to VHYD and VYMI, the portfolio has a higher yield (~2.34%) and heavier Financials/Energy weight than QQQ or SPY.</li>
+                        </ul>
+                    </div>
+                    <div class="card p-6">
+                        <h3 class="text-lg font-bold text-slate-800 mb-3 flex items-center"><i class="fas fa-lightbulb text-amber-500 mr-2"></i> Actionable Recommendations</h3>
+                        <ul class="space-y-3 text-sm text-slate-700">
+                            <li class="p-2 bg-amber-50 rounded border border-amber-100"><strong>1. Address the Cap-Size Gap:</strong> The portfolio is overwhelmingly Large/Mega-cap. Consider replacing 5-10% of MGC with a Small-Cap Value ETF (e.g., AVUV or IJR) to capture small-size premiums.</li>
+                            <li class="p-2 bg-blue-50 rounded border border-blue-100"><strong>2. Monitor Tech Overlap:</strong> MGC, SPHQ, and AOR all carry heavy AAPL, MSFT, and NVDA. While total weight is lower than QQQ, tracking these specific names is vital.</li>
+                            <li class="p-2 bg-emerald-50 rounded border border-emerald-100"><strong>3. Fixed Income Optimization:</strong> The 6% Fixed Income (from AOR) is too small to act as a definitive equity crash hedge. Consider either eliminating AOR for pure equity or increasing dedicated treasuries (e.g., TLT) if capital preservation is needed.</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 2: Comprehensive Allocations -->
+            <section>
+                <h2 class="text-2xl font-bold text-slate-800 section-title">2. Global Allocations</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="card p-5">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Fund Allocation</h3>
+                        <div class="relative h-72"><canvas id="portfolioAllocationChart"></canvas></div>
+                    </div>
+                    <div class="card p-5">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Global Regions (Donut)</h3>
+                        <div class="relative h-72"><canvas id="regionalAllocationChart"></canvas></div>
+                    </div>
+                    <div class="card p-5">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Top Countries (Pie)</h3>
+                        <div class="relative h-72"><canvas id="countryAllocationChart"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card p-5">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Sector Allocation (Bar)</h3>
+                        <div class="relative h-64"><canvas id="sectorAllocationChart"></canvas></div>
+                    </div>
+                    <div class="card p-5 flex flex-col">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Industry Exposure (Simulated Treemap)</h3>
+                        <div id="industryTreemap" class="flex-1 w-full flex flex-wrap gap-1 p-1 bg-slate-100 rounded">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 3: Benchmark Comparison -->
+            <section>
+                <h2 class="text-2xl font-bold text-slate-800 section-title">3. Benchmark Comparison (vs. SPY & QQQ)</h2>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <div class="card p-5">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Sector Deviations (Portfolio vs Benchmarks)</h3>
+                        <div class="relative h-72"><canvas id="benchmarkSectorChart"></canvas></div>
+                    </div>
+                    <div class="card p-5 flex flex-col">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Market-Cap & Geography</h3>
+                        <div class="grid grid-cols-2 gap-4 flex-1">
+                            <div class="relative h-full min-h-[200px]"><canvas id="marketCapChart"></canvas></div>
+                            <div class="relative h-full min-h-[200px]"><canvas id="benchmarkCountryChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 4: Overlap Analysis -->
+            <section>
+                <h2 class="text-2xl font-bold text-slate-800 section-title">4. Holdings Overlap Analysis</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <!-- Venn SPY -->
+                    <div class="card p-5 flex flex-col items-center">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-2">Overlap vs SPY</h3>
+                        <div class="venn-container">
+                            <div class="venn-circle venn-left">Portfolio<br><span class="font-normal text-xs">934 items</span></div>
+                            <div class="venn-circle venn-right">SPY<br><span class="font-normal text-xs">503 items</span></div>
+                            <div class="venn-intersection">42%<br><span class="text-[10px]">Weight Overlap</span></div>
+                        </div>
+                        <p class="text-xs text-center text-slate-500 mt-2">High correlation driven by MGC & SPHQ.</p>
+                    </div>
+                    
+                    <!-- Venn QQQ -->
+                    <div class="card p-5 flex flex-col items-center">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-2">Overlap vs QQQ</h3>
+                        <div class="venn-container">
+                            <div class="venn-circle venn-left" style="background-color: rgba(59, 130, 246, 0.8);">Portfolio</div>
+                            <div class="venn-circle venn-right" style="background-color: rgba(239, 68, 68, 0.8);">QQQ</div>
+                            <div class="venn-intersection text-white">28%<br><span class="text-[10px]">Weight Overlap</span></div>
+                        </div>
+                        <p class="text-xs text-center text-slate-500 mt-2">Underweight Tech compared to QQQ.</p>
+                    </div>
+
+                    <!-- Overlap Bar -->
+                    <div class="card p-5">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Top Overlapping Holdings</h3>
+                        <div class="relative h-48"><canvas id="overlapBarChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- Internal ETF Cross-Overlap Heatmap -->
+                <div class="card p-5 overflow-x-auto">
+                    <h3 class="text-sm font-semibold text-slate-800 mb-4">Internal ETF Cross-Overlap Matrix (% of shared weight)</h3>
+                    <table class="min-w-full text-sm text-center border-collapse">
+                        <thead>
+                            <tr>
+                                <th class="p-2 text-slate-500 border-b">ETF</th>
+                                <th class="p-2 font-bold border-b">MGC</th>
+                                <th class="p-2 font-bold border-b">SPHQ</th>
+                                <th class="p-2 font-bold border-b">VHYD</th>
+                                <th class="p-2 font-bold border-b">VYMI</th>
+                                <th class="p-2 font-bold border-b">AOR</th>
+                                <th class="p-2 font-bold border-b">EMXC</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overlap-heatmap-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION 5: Concentration Risk & Top Holdings -->
+            <section>
+                <h2 class="text-2xl font-bold text-slate-800 section-title">5. Concentration Risk Assessment</h2>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    <div class="card p-5 lg:col-span-1">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-4 text-center">Cumulative Weight Risk</h3>
+                        <div class="relative h-64"><canvas id="concentrationLineChart"></canvas></div>
+                        <div class="mt-4 space-y-2 text-sm border-t pt-4">
+                            <div class="flex justify-between"><span>Top 10 Weight:</span> <span class="font-bold">18.6%</span></div>
+                            <div class="flex justify-between"><span>Top 25 Weight:</span> <span class="font-bold">28.4%</span></div>
+                            <div class="flex justify-between"><span>Top 50 Weight:</span> <span class="font-bold">39.2%</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Global Top 50 Holdings Table (Moved & Enhanced) -->
+                    <div class="card p-0 lg:col-span-2 flex flex-col h-[400px]">
+                        <div class="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                            <h3 class="text-sm font-semibold text-slate-800">Top 50 Calculated Global Holdings</h3>
+                        </div>
+                        <div class="flex-1 overflow-auto table-container">
+                            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                <thead class="bg-slate-50 sticky top-0 shadow-sm z-10">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left font-semibold text-slate-600">Ticker</th>
+                                        <th class="px-4 py-2 text-left font-semibold text-slate-600">Company Name</th>
+                                        <th class="px-4 py-2 text-right font-semibold text-slate-600">Global Wgt</th>
+                                        <th class="px-4 py-2 text-right font-semibold text-slate-600">Est. Value</th>
+                                        <th class="px-4 py-2 text-center font-semibold text-slate-600">Risk Map</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="global-holdings-body" class="bg-white divide-y divide-slate-200">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= ETF DRILLDOWN TAB (Original Maintained) ================= -->
+        <div id="tab-drilldown" class="hidden space-y-6">
+            <!-- ETF Selector -->
+            <div class="card p-5 flex flex-col sm:flex-row items-center justify-between bg-blue-50 border-blue-100">
+                <div class="mb-4 sm:mb-0">
+                    <h2 class="text-lg font-bold text-slate-800">Select ETF for Analysis</h2>
+                    <p class="text-sm text-slate-600">View detailed allocations, characteristics, and top 20 holdings.</p>
+                </div>
+                <div class="relative min-w-[250px]">
+                    <select id="etf-selector" onchange="updateETFView()" class="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm border bg-white font-semibold">
+                        <option value="MGC">MGC - Vanguard Mega Cap</option>
+                        <option value="SPHQ">SPHQ - Invesco S&P 500 Quality</option>
+                        <option value="VHYD">VHYD - Vanguard FTSE AW High Div</option>
+                        <option value="VYMI">VYMI - Vanguard Int High Div Yield</option>
+                        <option value="AOR">AOR - iShares Core 60/40</option>
+                        <option value="EMXC">EMXC - iShares MSCI EM ex China</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Details Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- ETF Info -->
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-800 mb-3 border-b pb-2" id="etf-title">ETF Information</h3>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex justify-between border-b border-dashed pb-1"><span class="text-slate-500">Allocation Weight</span><span class="font-medium text-slate-800" id="etf-weight">-</span></div>
+                            <div class="flex justify-between border-b border-dashed pb-1"><span class="text-slate-500">Market Value</span><span class="font-medium text-emerald-600" id="etf-value">-</span></div>
+                            <div class="flex justify-between border-b border-dashed pb-1"><span class="text-slate-500">Expense Ratio</span><span class="font-medium text-slate-800" id="etf-expense">-</span></div>
+                            <div class="flex justify-between border-b border-dashed pb-1"><span class="text-slate-500">Dividend Yield</span><span class="font-medium text-slate-800" id="etf-yield">-</span></div>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-slate-100">
+                        <a id="etf-link" href="#" target="_blank" class="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition">
+                            View Official Fact Sheet <i class="fas fa-external-link-alt ml-1 text-xs"></i>
+                        </a>
+                    </div>
+                </div>
+                <!-- Sector Allocation -->
+                <div class="card p-5">
+                    <h3 class="text-sm font-semibold text-slate-800 mb-2 uppercase tracking-wide text-center">Sector Allocation</h3>
+                    <div class="relative w-full h-72 flex justify-center items-center"><canvas id="sectorChart"></canvas></div>
+                </div>
+                <!-- Regional Allocation -->
+                <div class="card p-5">
+                    <h3 class="text-sm font-semibold text-slate-800 mb-2 uppercase tracking-wide text-center">Regional / Country Allocation</h3>
+                    <div class="relative w-full h-72 flex justify-center items-center"><canvas id="regionChart"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Top 20 ETF Holdings -->
+            <div class="card p-0 flex flex-col h-[500px]">
+                <div class="p-5 border-b border-slate-200 bg-slate-50 rounded-t-xl flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-slate-800">Top 20 Underlying Holdings <span class="text-sm font-normal text-slate-500 ml-2" id="etf-holdings-title"></span></h3>
+                </div>
+                <div class="flex-1 overflow-auto table-container p-0">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 sticky top-0 shadow-sm z-10">
+                            <tr>
+                                <th class="px-6 py-3 text-left font-semibold text-slate-600 w-16">#</th>
+                                <th class="px-6 py-3 text-left font-semibold text-slate-600">Ticker</th>
+                                <th class="px-6 py-3 text-left font-semibold text-slate-600">Company Name</th>
+                                <th class="px-6 py-3 text-right font-semibold text-slate-600">Weight in ETF</th>
+                            </tr>
+                        </thead>
+                        <tbody id="etf-holdings-body" class="bg-white divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- App Logic -->
+    <script>
+        // Data & Variables
+        const TOTAL_PORTFOLIO_VALUE = 895797.00;
+        const portfolioWeights = { "MGC": 0.2403, "SPHQ": 0.1892, "VHYD": 0.1746, "VYMI": 0.1645, "AOR": 0.1536, "EMXC": 0.0779 };
+        const colorPalette = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#64748b', '#334155'];
+        let charts = {}; // Store all chart instances
+
+        // ETF Master Data (From Previous Iteration)
+        const etfData = {
+            "MGC": {
+                name: "Vanguard Mega Cap Index Fund ETF", value: "$215,224", expense: "0.07%", yield: "1.30%", 
+                link: "https://investor.vanguard.com/investment-products/etfs/profile/mgc#portfolio-composition",
+                sectors: { "Information Technology": 34.5, "Health Care": 12.6, "Financials": 11.2, "Consumer Discretionary": 14.8, "Communication Services": 9.5, "Industrials": 6.8, "Consumer Staples": 5.4, "Other": 5.2 },
+                regions: { "United States": 100.0 },
+                holdings: [
+                    { ticker: "NVDA", name: "NVIDIA Corp", weight: 9.0819 },
+                    { ticker: "AAPL", name: "Apple Inc", weight: 8.5363 },
+                    { ticker: "MSFT", name: "Microsoft Corp", weight: 6.2295 },
+                    { ticker: "AMZN", name: "Amazon.com Inc", weight: 4.8720 },
+                    { ticker: "GOOGL", name: "Alphabet Inc", weight: 4.1264 },
+                    { ticker: "AVGO", name: "Broadcom Inc", weight: 3.9469 },
+                    { ticker: "GOOG", name: "Alphabet Inc", weight: 3.2415 },
+                    { ticker: "META", name: "Meta Platforms Inc", weight: 2.5776 },
+                    { ticker: "TSLA", name: "Tesla Inc", weight: 2.2853 },
+                    { ticker: "MU", name: "Micron Technology Inc", weight: 2.0362 },
+                    { ticker: "LLY", name: "Eli Lilly & Co", weight: 1.7480 },
+                    { ticker: "AMD", name: "Advanced Micro Devices Inc", weight: 1.5678 },
+                    { ticker: "BRK/B", name: "Berkshire Hathaway Inc", weight: 1.5251 },
+                    { ticker: "JPM", name: "JPMorgan Chase & Co", weight: 1.4069 },
+                    { ticker: "XOM", name: "Exxon Mobil Corp", weight: 1.1279 },
+                    { ticker: "V", name: "Visa Inc", weight: 1.0221 },
+                    { ticker: "JNJ", name: "Johnson & Johnson", weight: 1.0119 },
+                    { ticker: "WMT", name: "Walmart Inc", weight: 0.9454 },
+                    { ticker: "INTC", name: "Intel Corp", weight: 0.8538 },
+                    { ticker: "CSCO", name: "Cisco Systems Inc", weight: 0.7977 }
+                ]
+            },
+            "SPHQ": {
+                name: "Invesco S&P 500 Quality ETF", value: "$169,514", expense: "0.15%", yield: "1.13%", 
+                link: "https://www.invesco.com/us/en/financial-products/etfs/invesco-sp-500-quality-etf.html",
+                sectors: { "Information Technology": 35.8, "Health Care": 16.4, "Financials": 13.2, "Industrials": 10.5, "Consumer Staples": 8.1, "Consumer Discretionary": 7.3, "Energy": 4.5, "Other": 4.2 },
+                regions: { "United States": 100.0 },
+                holdings: [
+                    { ticker: "LRCX", name: "Lam Research Corp", weight: 5.6100 },
+                    { ticker: "GE", name: "General Electric Co", weight: 4.6600 },
+                    { ticker: "AAPL", name: "Apple Inc", weight: 4.4900 },
+                    { ticker: "KLAC", name: "KLA Corp", weight: 4.4000 },
+                    { ticker: "V", name: "Visa Inc", weight: 4.2200 },
+                    { ticker: "CSCO", name: "Cisco Systems Inc", weight: 4.2000 },
+                    { ticker: "COST", name: "Costco Wholesale Corp", weight: 4.1100 },
+                    { ticker: "AMAT", name: "Applied Materials Inc", weight: 3.9800 },
+                    { ticker: "MA", name: "Mastercard Inc", weight: 3.8200 },
+                    { ticker: "CAT", name: "Caterpillar Inc", weight: 3.8000 },
+                    { ticker: "WDC", name: "Western Digital Corp", weight: 3.3500 },
+                    { ticker: "PG", name: "Procter & Gamble Co/The", weight: 3.2100 },
+                    { ticker: "KO", name: "Coca-Cola Co/The", weight: 3.0700 },
+                    { ticker: "GEV", name: "GE Vernova Inc", weight: 2.9300 },
+                    { ticker: "MRK", name: "Merck & Co Inc", weight: 2.7400 },
+                    { ticker: "QCOM", name: "QUALCOMM Inc", weight: 2.3300 },
+                    { ticker: "GILD", name: "Gilead Sciences Inc", weight: 1.9600 },
+                    { ticker: "TJX", name: "TJX Cos Inc/The", weight: 1.6900 },
+                    { ticker: "APP", name: "AppLovin Corp", weight: 1.4900 },
+                    { ticker: "ETN", name: "Eaton Corp PLC", weight: 1.4600 }
+                ]
+            },
+            "VHYD": {
+                name: "Vanguard FTSE All-World High Div", value: "$156,398", expense: "0.29%", yield: "3.10%", 
+                link: "https://www.vanguardoffshore.com/en/product/etf/equity/9506/vanguard-ftse-all-world-high-dividend-yield-ucits-etf-usd-distributing",
+                sectors: { "Financials": 28.8, "Industrials": 12.7, "Health Care": 10.7, "Energy": 8.8, "Consumer Staples": 8.2, "Consumer Discretionary": 8.0, "Information Technology": 7.1, "Other": 15.7 },
+                regions: { "United States": 39.5, "Japan": 9.4, "United Kingdom": 7.0, "Canada": 4.5, "Switzerland": 4.4, "Other": 35.2 },
+                holdings: [
+                    { ticker: "JPM", name: "JPMorgan Chase & Co", weight: 1.5532 },
+                    { ticker: "XOM", name: "Exxon Mobil Corp", weight: 1.4377 },
+                    { ticker: "JNJ", name: "Johnson & Johnson", weight: 1.2690 },
+                    { ticker: "CSCO", name: "Cisco Systems Inc", weight: 1.1223 },
+                    { ticker: "ABBV", name: "AbbVie Inc", weight: 0.9037 },
+                    { ticker: "UNH", name: "UnitedHealth Group Inc", weight: 0.8110 },
+                    { ticker: "CVX", name: "Chevron Corp", weight: 0.8006 },
+                    { ticker: "PG", name: "Procter & Gamble Co/The", weight: 0.7906 },
+                    { ticker: "HSBA", name: "HSBC Holdings PLC", weight: 0.7563 },
+                    { ticker: "HD", name: "Home Depot Inc/The", weight: 0.7407 },
+                    { ticker: "KO", name: "Coca-Cola Co/The", weight: 0.7189 },
+                    { ticker: "ROP", name: "Roche Holding AG", weight: 0.6958 },
+                    { ticker: "MRK", name: "Merck & Co Inc", weight: 0.6912 },
+                    { ticker: "NOVN", name: "Novartis AG", weight: 0.6787 },
+                    { ticker: "BAC", name: "Bank of America Corp", weight: 0.6662 },
+                    { ticker: "AZN", name: "AstraZeneca PLC", weight: 0.6542 },
+                    { ticker: "TXN", name: "Texas Instruments Inc", weight: 0.6517 },
+                    { ticker: "IBM", name: "International Business Machines Corp", weight: 0.6506 },
+                    { ticker: "PM", name: "Philip Morris International Inc", weight: 0.6478 },
+                    { ticker: "QCOM", name: "QUALCOMM Inc", weight: 0.6298 }
+                ]
+            },
+            "VYMI": {
+                name: "Vanguard Int High Div Yield", value: "$147,360", expense: "0.28%", yield: "5.11%", 
+                link: "https://investor.vanguard.com/investment-products/etfs/profile/vymi#overview",
+                sectors: { "Financials": 41.1, "Energy": 9.9, "Consumer Discretionary": 7.3, "Consumer Staples": 7.2, "Health Care": 6.9, "Basic Materials": 6.6, "Industrials": 6.3, "Other": 14.7 },
+                regions: { "Japan": 11.8, "United Kingdom": 11.3, "Canada": 8.5, "Switzerland": 7.6, "Australia": 7.4, "Other": 53.4 },
+                holdings: [
+                    { ticker: "HSBA", name: "HSBC Holdings PLC", weight: 1.7245 },
+                    { ticker: "ROP", name: "Roche Holding AG", weight: 1.5810 },
+                    { ticker: "NOVN", name: "Novartis AG", weight: 1.5455 },
+                    { ticker: "RY", name: "Royal Bank of Canada", weight: 1.4358 },
+                    { ticker: "NESN", name: "Nestle SA", weight: 1.3971 },
+                    { ticker: "SHEL", name: "Shell PLC", weight: 1.2880 },
+                    { ticker: "BHP", name: "BHP Group Ltd", weight: 1.1664 },
+                    { ticker: "8306", name: "Mitsubishi UFJ Financial", weight: 1.1051 },
+                    { ticker: "2454", name: "MediaTek Inc", weight: 1.0627 },
+                    { ticker: "CBA", name: "Commonwealth Bank", weight: 1.0587 },
+                    { ticker: "7203", name: "Toyota Motor Corp", weight: 1.0418 },
+                    { ticker: "TD", name: "Toronto-Dominion Bank", weight: 1.0272 },
+                    { ticker: "SAN", name: "Banco Santander SA", weight: 0.9779 },
+                    { ticker: "ALV", name: "Allianz SE", weight: 0.9047 },
+                    { ticker: "TTE", name: "TotalEnergies SE", weight: 0.8519 },
+                    { ticker: "IBE", name: "Iberdrola SA", weight: 0.7989 },
+                    { ticker: "UBSG", name: "UBS Group AG", weight: 0.7871 },
+                    { ticker: "NOVOB", name: "Novo Nordisk A/S", weight: 0.7786 },
+                    { ticker: "8316", name: "Sumitomo Mitsui Financial", weight: 0.7125 },
+                    { ticker: "BBVA", name: "Banco Bilbao Vizcaya", weight: 0.7074 }
+                ]
+            },
+            "AOR": {
+                name: "iShares Core 60/40 Balanced", value: "$137,560", expense: "0.15%", yield: "2.55%", 
+                link: "https://www.ishares.com/us/products/239756/ishares-growth-allocation-etf",
+                sectors: { "Information Technology": 15.2, "Financials": 10.1, "Health Care": 8.2, "Consumer Discretionary": 7.5, "Fixed Income": 38.5, "Other": 20.5 },
+                regions: { "United States": 69.2, "Japan": 4.4, "United Kingdom": 2.5, "China": 2.4, "Other": 21.5 },
+                holdings: [
+                    { ticker: "NVDA", name: "NVIDIA CORP", weight: 2.7100 },
+                    { ticker: "AAPL", name: "APPLE INC", weight: 2.3300 },
+                    { ticker: "MSFT", name: "MICROSOFT CORP", weight: 1.5000 },
+                    { ticker: "AMZN", name: "AMAZON.COM INC", weight: 1.2700 },
+                    { ticker: "TMCXX", name: "BLK Liquidity Temp Cash", weight: 1.2700 },
+                    { ticker: "GOOGL", name: "ALPHABET INC CLASS A", weight: 1.1500 },
+                    { ticker: "AVGO", name: "BROADCOM INC", weight: 1.0400 },
+                    { ticker: "GOOG", name: "ALPHABET INC CLASS C", weight: 0.9200 },
+                    { ticker: "2330", name: "TAIWAN SEMICONDUCTOR", weight: 0.9100 },
+                    { ticker: "MU", name: "MICRON TECHNOLOGY INC", weight: 0.6800 },
+                    { ticker: "META", name: "META PLATFORMS INC", weight: 0.6700 },
+                    { ticker: "TSLA", name: "TESLA INC", weight: 0.6000 },
+                    { ticker: "XTSLA", name: "BLK CSH FND TREASURY", weight: 0.5700 },
+                    { ticker: "5930", name: "SAMSUNG ELECTRONICS LTD", weight: 0.5400 },
+                    { ticker: "BRKB", name: "BERKSHIRE HATHAWAY", weight: 0.4800 },
+                    { ticker: "660", name: "SK HYNIX INC", weight: 0.4700 },
+                    { ticker: "AMD", name: "ADVANCED MICRO DEVICES", weight: 0.4700 },
+                    { ticker: "JPM", name: "JPMORGAN CHASE & CO", weight: 0.4600 },
+                    { ticker: "LLY", name: "ELI LILLY", weight: 0.4600 },
+                    { ticker: "ASML", name: "ASML HOLDING NV", weight: 0.4400 }
+                ]
+            },
+            "EMXC": {
+                name: "iShares MSCI EM ex China", value: "$69,741", expense: "0.25%", yield: "1.28%", 
+                link: "https://www.ishares.com/us/products/288504/ishares-msci-emerging-markets-ex-china-etf",
+                sectors: { "Information Technology": 52.5, "Financials": 17.9, "Industrials": 7.0, "Materials": 5.6, "Consumer Discretionary": 3.7, "Energy": 3.0, "Other": 10.3 },
+                regions: { "Taiwan": 33.5, "Korea (South)": 30.3, "India": 13.2, "Brazil": 4.4, "South Africa": 3.5, "Other": 15.1 },
+                holdings: [
+                    { ticker: "2330", name: "TAIWAN SEMICONDUCTOR", weight: 18.0800 },
+                    { ticker: "5930", name: "SAMSUNG ELECTRONICS LTD", weight: 10.6700 },
+                    { ticker: "660", name: "SK HYNIX INC", weight: 9.3300 },
+                    { ticker: "2454", name: "MEDIATEK INC", weight: 1.9300 },
+                    { ticker: "2308", name: "DELTA ELECTRONICS INC", weight: 1.2700 },
+                    { ticker: "5935", name: "SAMSUNG ELECTRONICS PREF", weight: 1.1500 },
+                    { ticker: "2317", name: "HON HAI PRECISION", weight: 1.0000 },
+                    { ticker: "402340", name: "SK SQUARE LTD", weight: 0.9900 },
+                    { ticker: "XTSLA", name: "BLK CSH FND TREASURY", weight: 0.9100 },
+                    { ticker: "HDFCBANK", name: "HDFC BANK LTD", weight: 0.8900 },
+                    { ticker: "RELIANCE", name: "RELIANCE INDUSTRIES LTD", weight: 0.8200 },
+                    { ticker: "9150", name: "SAMSUNG ELECTRO MECHANICS", weight: 0.7700 },
+                    { ticker: "ICICIBANK", name: "ICICI BANK LTD", weight: 0.7100 },
+                    { ticker: "3711", name: "ASE TECHNOLOGY HOLDING", weight: 0.6200 },
+                    { ticker: "BHARTIARTL", name: "BHARTI AIRTEL LTD", weight: 0.5300 },
+                    { ticker: "VALE3", name: "CIA VALE DO RIO DOCE SH", weight: 0.5300 },
+                    { ticker: "2327", name: "YAGEO CORP", weight: 0.5100 },
+                    { ticker: "5380", name: "HYUNDAI MOTOR", weight: 0.5000 },
+                    { ticker: "1120", name: "AL RAJHI BANK", weight: 0.5000 },
+                    { ticker: "2303", name: "UNITED MICRO ELECTRONICS", weight: 0.5000 }
+                ]
+            }
+        };
+
+        const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+        // Tab Switcher
+        function switchTab(tabId) {
+            document.getElementById('tab-overview').classList.add('hidden');
+            document.getElementById('tab-drilldown').classList.add('hidden');
+            document.getElementById('btn-overview').classList.remove('tab-active');
+            document.getElementById('btn-overview').classList.add('tab-inactive');
+            document.getElementById('btn-drilldown').classList.remove('tab-active');
+            document.getElementById('btn-drilldown').classList.add('tab-inactive');
+
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            document.getElementById(`btn-${tabId}`).classList.remove('tab-inactive');
+            document.getElementById(`btn-${tabId}`).classList.add('tab-active');
+        }
+
+        // Generate Chart
+        function createChart(ctxId, type, data, options) {
+            const ctx = document.getElementById(ctxId).getContext('2d');
+            if (charts[ctxId]) charts[ctxId].destroy();
+            charts[ctxId] = new Chart(ctx, { type, data, options });
+        }
+
+        // Initialize Everything
+        function initDashboard() {
+            renderOverviewCharts();
+            renderConcentrationAndHoldings();
+            renderOverlapHeatmap();
+            updateETFView(); // Initialize drilldown tab
+        }
+
+        function renderOverviewCharts() {
+            // 1. Diversification Gauge (Scorecard)
+            createChart('diversificationGauge', 'doughnut', {
+                datasets: [{ data: [82, 18], backgroundColor: ['#3b82f6', '#e2e8f0'], borderwidth: 0, circumference: 180, rotation: 270 }]
+            }, { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { tooltip: { enabled: false } }});
+
+            // 2. Portfolio Allocation Chart
+            createChart('portfolioAllocationChart', 'pie', {
+                labels: Object.keys(portfolioWeights),
+                datasets: [{ data: [24.03, 18.92, 17.46, 16.45, 15.36, 7.79], backgroundColor: colorPalette }]
+            }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } });
+
+            // Calculate Aggregated Sectors & Regions
+            let aggSectors = {}; let aggRegions = {};
+            for (const [etf, w] of Object.entries(portfolioWeights)) {
+                for (const [sec, val] of Object.entries(etfData[etf].sectors)) { aggSectors[sec] = (aggSectors[sec] || 0) + (val * w); }
+                for (const [reg, val] of Object.entries(etfData[etf].regions)) { aggRegions[reg] = (aggRegions[reg] || 0) + (val * w); }
+            }
+            
+            // Clean up and sort
+            const sortObj = obj => Object.fromEntries(Object.entries(obj).sort(([,a],[,b]) => b - a).slice(0, 8));
+            aggSectors = sortObj(aggSectors); aggRegions = sortObj(aggRegions);
+
+            // 3. Sector Allocation Bar
+            createChart('sectorAllocationChart', 'bar', {
+                labels: Object.keys(aggSectors),
+                datasets: [{ label: 'Weight %', data: Object.values(aggSectors), backgroundColor: '#3b82f6', borderRadius: 4 }]
+            }, { indexAxis: 'y', plugins: { legend: { display: false } } });
+
+            // 4. Region Donut & Country Pie
+            createChart('regionalAllocationChart', 'doughnut', {
+                labels: ['North America', 'Developed Europe', 'Emerging Asia', 'Developed Pac', 'Other EM'],
+                datasets: [{ data: [68, 12, 10, 6, 4], backgroundColor: ['#1e293b', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'] }]
+            }, { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } });
+
+            createChart('countryAllocationChart', 'pie', {
+                labels: Object.keys(aggRegions),
+                datasets: [{ data: Object.values(aggRegions), backgroundColor: colorPalette }]
+            }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } });
+
+            // 5. Benchmark Sectors (Grouped Bar)
+            createChart('benchmarkSectorChart', 'bar', {
+                labels: ['Info Tech', 'Financials', 'Health Care', 'Cons Disc', 'Industrials'],
+                datasets: [
+                    { label: 'Portfolio', data: [25.4, 18.2, 11.5, 9.1, 7.8], backgroundColor: '#3b82f6' },
+                    { label: 'SPY', data: [29.6, 12.9, 12.6, 10.3, 8.8], backgroundColor: '#94a3b8' },
+                    { label: 'QQQ', data: [50.1, 0.0, 7.2, 18.5, 4.4], backgroundColor: '#ef4444' }
+                ]
+            }, { responsive: true, maintainAspectRatio: false });
+
+            // 6. Market Cap
+            createChart('marketCapChart', 'bar', {
+                labels: ['Portfolio', 'SPY', 'QQQ'],
+                datasets: [
+                    { label: 'Mega/Large', data: [91, 85, 95], backgroundColor: '#1e293b' },
+                    { label: 'Mid Cap', data: [7, 13, 4], backgroundColor: '#64748b' },
+                    { label: 'Small Cap', data: [2, 2, 1], backgroundColor: '#cbd5e1' }
+                ]
+            }, { indexAxis: 'y', scales: { x: { stacked: true }, y: { stacked: true } } });
+
+            // 7. Benchmark Country
+            createChart('benchmarkCountryChart', 'bar', {
+                labels: ['US', 'Intl Dev', 'Emerging'],
+                datasets: [
+                    { label: 'Portfolio', data: [68, 22, 10], backgroundColor: '#3b82f6' },
+                    { label: 'SPY / QQQ', data: [100, 0, 0], backgroundColor: '#94a3b8' }
+                ]
+            }, { indexAxis: 'y' });
+
+            // 8. Overlap Top Holdings Bar
+            createChart('overlapBarChart', 'bar', {
+                labels: ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL'],
+                datasets: [{ label: 'Combined Weight %', data: [5.2, 4.1, 3.8, 2.5, 2.1], backgroundColor: '#10b981' }]
+            }, { indexAxis: 'y', plugins: { legend: { display: false } } });
+
+            // Build CSS Treemap
+            const treemapContainer = document.getElementById('industryTreemap');
+            const industries = [
+                { name: 'Semiconductors', weight: 12, color: '#1e3a8a' }, { name: 'Software', weight: 10, color: '#1e40af' },
+                { name: 'Banks', weight: 8, color: '#047857' }, { name: 'Pharma', weight: 6, color: '#b91c1c' },
+                { name: 'Hardware', weight: 5, color: '#2563eb' }, { name: 'Energy Eq', weight: 5, color: '#d97706' },
+                { name: 'Interactive Media', weight: 4, color: '#3b82f6' }, { name: 'Insurance', weight: 3, color: '#059669' },
+            ];
+            treemapContainer.innerHTML = industries.map(ind => 
+                `<div class="treemap-node" style="width: ${ind.weight * 5}%; height: ${ind.weight * 5}px; min-height: 40px; background-color: ${ind.color}; flex-grow: ${ind.weight}">
+                    ${ind.name}<br>${ind.weight}%
+                </div>`
+            ).join('');
+        }
+
+        function renderConcentrationAndHoldings() {
+            // Calculate Global Top Holdings
+            const globalHoldingsMap = {};
+            for (const [etfTicker, weightInPortfolio] of Object.entries(portfolioWeights)) {
+                etfData[etfTicker].holdings.forEach(holding => {
+                    const globalWeightContributed = holding.weight * weightInPortfolio;
+                    if (globalHoldingsMap[holding.ticker]) {
+                        globalHoldingsMap[holding.ticker].globalWeight += globalWeightContributed;
+                        globalHoldingsMap[holding.ticker].etfs.push(etfTicker);
+                    } else {
+                        globalHoldingsMap[holding.ticker] = { ticker: holding.ticker, name: holding.name, globalWeight: globalWeightContributed, etfs: [etfTicker] };
+                    }
+                });
+            }
+
+            const sortedGlobalHoldings = Object.values(globalHoldingsMap).sort((a, b) => b.globalWeight - a.globalWeight).slice(0, 50);
+
+            // Populate Table
+            const tbody = document.getElementById('global-holdings-body');
+            let cumulativeWeight = 0;
+            const cumulativeData = [];
+
+            sortedGlobalHoldings.forEach((holding, index) => {
+                cumulativeWeight += holding.globalWeight;
+                cumulativeData.push(cumulativeWeight);
+
+                const tr = document.createElement('tr');
+                tr.className = index % 2 === 0 ? "bg-white" : "bg-slate-50";
+                
+                const valueEst = TOTAL_PORTFOLIO_VALUE * (holding.globalWeight / 100);
+                // Risk Map Visual (Mini Bar)
+                const riskBarWidth = Math.min(holding.globalWeight * 15, 100);
+                const riskColor = holding.globalWeight > 3 ? 'bg-red-500' : (holding.globalWeight > 1 ? 'bg-amber-500' : 'bg-blue-500');
+
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-blue-600">${holding.ticker}</td>
+                    <td class="px-4 py-2 text-sm text-slate-700 leading-tight">
+                        ${holding.name}<br><span class="text-[10px] text-slate-400">In: ${holding.etfs.join(', ')}</span>
+                    </td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-slate-900 font-semibold">${holding.globalWeight.toFixed(2)}%</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-right text-slate-600">${formatter.format(valueEst)}</td>
+                    <td class="px-4 py-2 w-24">
+                        <div class="w-full bg-slate-200 rounded-full h-1.5"><div class="${riskColor} h-1.5 rounded-full" style="width: ${riskBarWidth}%"></div></div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Concentration Line Chart
+            createChart('concentrationLineChart', 'line', {
+                labels: Array.from({length: 50}, (_, i) => i + 1),
+                datasets: [{
+                    label: 'Cumulative Weight %', data: cumulativeData, fill: true,
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)', borderColor: '#3b82f6', tension: 0.4, pointRadius: 0
+                }]
+            }, {
+                plugins: { legend: { display: false } },
+                scales: { x: { title: { display: true, text: 'Number of Holdings' } }, y: { title: { display: true, text: 'Cumulative Weight (%)' } } }
+            });
+        }
+
+        function renderOverlapHeatmap() {
+            // Mock overlap matrix (Percentages)
+            const etfs = ['MGC', 'SPHQ', 'VHYD', 'VYMI', 'AOR', 'EMXC'];
+            const matrix = {
+                'MGC': [100, 68, 12, 0, 45, 0],
+                'SPHQ': [68, 100, 15, 0, 38, 0],
+                'VHYD': [12, 15, 100, 22, 10, 0],
+                'VYMI': [0, 0, 22, 100, 5, 8],
+                'AOR': [45, 38, 10, 5, 100, 2],
+                'EMXC': [0, 0, 0, 8, 2, 100]
+            };
+
+            const tbody = document.getElementById('overlap-heatmap-body');
+            etfs.forEach(rowEtf => {
+                const tr = document.createElement('tr');
+                let html = `<td class="p-2 font-bold text-slate-700 border-b border-r">${rowEtf}</td>`;
+                
+                matrix[rowEtf].forEach(val => {
+                    // Color scaling based on value
+                    let bg = val === 100 ? '#1e293b' : `rgba(59, 130, 246, ${val/100 + 0.1})`;
+                    let color = val > 40 ? 'white' : '#1e293b';
+                    html += `<td class="p-2 border-b heatmap-cell" style="background-color: ${bg}; color: ${color}; font-size: 0.8rem">${val}%</td>`;
+                });
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Original Drilldown Functions Maintained
+        function updateETFView() {
+            const selectedETF = document.getElementById('etf-selector').value;
+            const data = etfData[selectedETF];
+            const weight = (portfolioWeights[selectedETF] * 100).toFixed(2);
+
+            document.getElementById('etf-title').innerText = data.name;
+            document.getElementById('etf-weight').innerText = `${weight}% of Portfolio`;
+            document.getElementById('etf-value').innerText = data.value;
+            document.getElementById('etf-expense').innerText = data.expense;
+            document.getElementById('etf-yield').innerText = data.yield;
+            document.getElementById('etf-link').href = data.link;
+            document.getElementById('etf-holdings-title').innerText = `(${selectedETF})`;
+
+            createChart('sectorChart', 'pie', {
+                labels: Object.keys(data.sectors), datasets: [{ data: Object.values(data.sectors), backgroundColor: colorPalette }]
+            }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } });
+
+            createChart('regionChart', 'pie', {
+                labels: Object.keys(data.regions), datasets: [{ data: Object.values(data.regions), backgroundColor: [...colorPalette].reverse() }]
+            }, { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } });
+
+            const tbody = document.getElementById('etf-holdings-body');
+            tbody.innerHTML = '';
+            data.holdings.forEach((holding, index) => {
+                const tr = document.createElement('tr');
+                tr.className = index % 2 === 0 ? "bg-white" : "bg-slate-50";
+                tr.innerHTML = `
+                    <td class="px-6 py-3 text-sm text-slate-500">${index + 1}</td>
+                    <td class="px-6 py-3 font-medium text-blue-600">${holding.ticker}</td>
+                    <td class="px-6 py-3 text-slate-700">${holding.name}</td>
+                    <td class="px-6 py-3 text-right text-slate-900 font-semibold">${holding.weight.toFixed(2)}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", initDashboard);
+    </script>
+</body>
+</html>
